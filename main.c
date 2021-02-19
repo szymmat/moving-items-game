@@ -1,8 +1,3 @@
-// Oswiadczam, ze niniejsza praca stanowiaca podstawe do uznania efektow uczenia sie z przedmiotu SOP1 zostala wykonana
-// przeze mnie samodzielnie
-// Mateusz Szymczak
-// 305901
-
 #define _XOPEN_SOURCE 500
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -22,68 +17,58 @@
 #define MAX_GRAPH 1000
 #define MAX_FD 20
 
-// Makro opisujące błąd o ile taki nastąpi, i jego przyczynę.
 // A macro that describes an error and its source, if occured.
 #define ERR(source) (perror(source),\
 		     fprintf(stderr,"%s:%d\n",__FILE__,__LINE__),\
 		     exit(EXIT_FAILURE))
 
-// Makro obliczające czas pomiędzy chwilą początkową a końcową.
 // A macro that computes time between end and start.
 #define ELAPSED(start,end) ((end).tv_sec-(start).tv_sec)+(((end).tv_nsec - (start).tv_nsec) * 1.0e-9)
 
-// Struktura opisująca parametry gry.
+// A structure containing game data.
 typedef struct gameArgs {
-    bool** graph; // Mapa gry. Game map
-    // Array containing information which items are in their destination rooms.
-    bool* properRoom; // Tablica przechowująca informację o tym, czy dany przedmiot jest w dobrym pomieszczeniu.
-    int movesCount; // Liczba ruchów do tej pory. Number of moves made by player.
-    int roomCount; // Liczba pomieszczeń na mapie. Number of rooms on the map.
-    int itemHeld; // Numer trzymanego przedmiotu lub -1, gdy gracz nie trzyma przedmiotu. Number of item held by a player or -1 if player does not hold any item.
-    int currentRoom; // Pomieszczenie, w którym aktualnie znajduje się gracz. Number of currently visited room.
-    int saveCount; // Liczba ręcznych zapisów do tej pory. Number of manual game saves.
-    pthread_mutex_t* mutex; // Mutex do synchronizacji. Mutex for synchronization.
+    bool** graph; // Game map.
+    bool* properRoom; // // Array containing information which items are in their destination rooms.
+    int movesCount; // Number of moves made by player.
+    int roomCount; // Number of rooms on the map.
+    int itemHeld; // Number of item held by a player or -1 if player does not hold any item.
+    int currentRoom; // Number of currently visited room.
+    int saveCount; // Number of manual game saves.
+    pthread_mutex_t* mutex; // Mutex for synchronization.
     sigset_t* mask; // Signal mask.
-    int* items; // Tablica zawierająca aktualne położenie każdego przedmiotu. Array containing current location of every item.
-    int* itemDest; // Tablica zawierająca docelowe położenie każdego przedmiotu. Array containing destination location of every item.
-    int* itemsInRoom; // Tablica zawierająca liczbę przedmiotów w każdym pomieszczeniu. Array containing number of items in every room.
-    char* autosavePath; // Ścieżka autozapisu. Path for autosave.
+    int* items; // Array containing current location of every item.
+    int* itemDest; // Array containing destination location of every item.
+    int* itemsInRoom; // Array containing number of items in every room.
+    char* autosavePath; // Path for autosave.
 } gameArgs_t;
 
-// Struktura przekazywana do wątków realizujących funkcję find-path (szukanie najkrótszej ścieżki między pomieszczeniami).
 // Structure passed to threads executing FindPath (finding path between two rooms)
 typedef struct findPathArgs { 
     gameArgs_t* args; // Current game status.
-    int x; // Numer pomieszczenia, do którego szukamy ściezki. Number of destination room.
+    int x; // Number of destination room for a path.
 } findPathArgs_t;
 
-// Struktura zwracana przez funkcję FindPath (szukanie najkrótszej ścieżki między pomieszczeniami).
 // Structure returned from FindPath (finding path between two rooms)
 typedef struct findPathReturnArgs { 
-    int* path; // Znaleziona ścieżka. Path found.
-    int len; // Długość ścieżki. Path length.
-    bool ok; // Czy ściezka jest poprawna (kończy się w docelowym węźle). Information if found path ends in destination room.
+    int* path; // Path found.
+    int len; // Path length.
+    bool ok; // Information if found path ends in destination room.
 } findPathReturnArgs_t;
 
-// Struktura modyfikowana przez funkcję nftw wywoływaną z map-from-dir-tree (odwzorowanie drzewa katalogów jako mapy gry)
 // Structure modified by nftw function called by MapFromDirTree (creating map from a directory tree).
 typedef struct nftwArgs { 
-    int level[MAX_PATH]; // Poziom zagłębienia w przeszukiwanym drzewie dla każdego folderu. Depth of every found directory.
-    int len; // Liczba znalezionych folderów. Number of found directories.
+    int level[MAX_PATH]; // Depth of every found directory.
+    int len; // Number of found directories.
 } nftwArgs_t;
 
-nftwArgs_t nftwArgs; 
-// map-from-dir-tree (odwzorowanie drzewa katalogów jako mapy gry) wymaga skorzystania z funkcji nftw, a żeby coś z niej przekazać, konieczna
-// jest zmienna globalna. A global variable essential to return anything from nftw.
+nftwArgs_t nftwArgs; // A global variable essential to return data from nftw.
 
-// Wypisuje poprawny sposób wywołania programu w przypadku, gdy zrobiono to niepoprawnie.
 // Prints a proper way to execute program. 
 void usage() { 
     perror("USAGE: ./main -b backup-path\n");
     exit(EXIT_FAILURE);
 }
 
-// Tworzy i zwraca nieskierowany graf o n wierzchołkach z losowymi połączeniami pomiędzy wierzchołkami będący mapą gry.
 // Creates and returns undirected graph with n vertices and random edges between them, which becomes game map.
 bool** CreateGraph(int n) { 
     bool** graph = (bool **) malloc(sizeof(bool *) * n);
@@ -94,7 +79,7 @@ bool** CreateGraph(int n) {
         if(!graph[i]) ERR("malloc");
     }
     for(i=0;i<n-1;i++) {
-        int count = 0; // Musimy zapewnić spójność grafu, musi być wyjście z każdego pomieszczenia. We need to ensure the graph is connected.
+        int count = 0; // We need to ensure the graph is connected.
         while(count == 0) {
             for(j=i+1;j<n;j++) {
                 int num = rand()%2;
@@ -113,8 +98,7 @@ bool** CreateGraph(int n) {
     return graph;
 }
 
-// Zapisuje mapę podaną przez parametr graph o rozmiarze n do pliku o ścieżce path.
-// Saves graph with n vertices to file pointed by path.
+// Saves graph with n vertices to a file.
 void SaveGraph(bool** graph, int n, char* path) {
     int out,i,j;
     if((out=open(path,O_WRONLY|O_CREAT|O_TRUNC,0777))<0)ERR("open");
@@ -125,8 +109,8 @@ void SaveGraph(bool** graph, int n, char* path) {
     }
     if(close(out)) ERR("close");
 }
-// Odczytuje mapę ze ścieżki path do struktury args.
-// Reads map from file pointed by path to args structure.
+
+// Reads map from file into args structure.
 void ReadGraph(gameArgs_t* args, char* path) {
     int in;
     int i,j;
@@ -146,7 +130,7 @@ void ReadGraph(gameArgs_t* args, char* path) {
     if(close(in)) ERR("close");
 }
 
-// Przygotowanie nowej gry. Preparing new game.
+// Preparing new game.
 void OrganizeItems(gameArgs_t* args) { 
     int i;
     int numberOfItems = 3*args->roomCount/2;
@@ -156,7 +140,7 @@ void OrganizeItems(gameArgs_t* args) {
     args->items = (int*) malloc(sizeof(int)*numberOfItems);
     args->itemsInRoom = (int*) malloc(sizeof(int)*args->roomCount);
     args->itemDest = (int*) malloc(sizeof(int)*numberOfItems);
-    int* destsInRoom = (int*)malloc(sizeof(int)*args->roomCount); // Nie będzie potrzebna w dalszej grze.
+    int* destsInRoom = (int*)malloc(sizeof(int)*args->roomCount);
     args->itemHeld = -1;
     args->currentRoom = rand()%args->roomCount;
     if(!args->items || !args->itemsInRoom || !args->itemDest || !destsInRoom || !args->properRoom) ERR("malloc");
@@ -164,7 +148,7 @@ void OrganizeItems(gameArgs_t* args) {
         args->itemsInRoom[i] = 0;
         destsInRoom[i] = 0;
     }
-    for(i=0;i<numberOfItems;i++) { // Przyporządkowanie startowych pomieszczeń przedmiotom. Assigning starting rooms to items.
+    for(i=0;i<numberOfItems;i++) { // Assigning start location to items.
         bool placed = false;
         args->properRoom[i] = false;
         while(!placed) {
@@ -176,7 +160,7 @@ void OrganizeItems(gameArgs_t* args) {
             }
         }
     }
-    for(i=0;i<numberOfItems;i++) { // Przyporządkowanie docelowych pomieszczeń przedmiotom, różnych od początkowych. Assigning destination rooms to items.
+    for(i=0;i<numberOfItems;i++) { // Assigning destination rooms to items.
         bool placed = false;
         while(!placed) {
             int destRoomNumber = rand()%args->roomCount;
@@ -187,10 +171,10 @@ void OrganizeItems(gameArgs_t* args) {
             }
         }
     }
-    free(destsInRoom); // Tablica pomocnicza, niepotrzebna w dalszej części gry.
+    free(destsInRoom);
 }
 
-// Wypisuje możliwe przejścia z danego wierzchołka grafu do innego. Prints rooms currently available to move into.
+// Prints rooms currently available to move into.
 void PrintAvailableRooms(gameArgs_t* args) {
     printf("Current room is %d. Available rooms are: ", args->currentRoom);
     for(int i=0;i<args->roomCount;i++) {
@@ -199,7 +183,7 @@ void PrintAvailableRooms(gameArgs_t* args) {
     printf("\n");
 }
 
-// Wypisuje podstawowe informacje o przebiegu rozgrywki. Prints basic information about current game.
+// Prints basic information about current game.
 void PrintItemsInRoom(gameArgs_t* args) {
     printf("Items in this room: ");
     int i;
@@ -216,7 +200,7 @@ void PrintItemsInRoom(gameArgs_t* args) {
     printf(" Moves count: %d\n",args->movesCount);
 }
 
-// Sprawdza czy spełniono warunek końca gry. Checks if the game should be finished.
+// Checks if the game had finished.
 bool CheckIfFinished(gameArgs_t* args) {
     int i;
     for(i=0;i<3*args->roomCount/2;i++) {
@@ -225,7 +209,7 @@ bool CheckIfFinished(gameArgs_t* args) {
     return true;
 }
 
-// Zapisuje stan gry opisywanej przez parametr args do pliku o ścieżce path. Saves game data to file pointed to by path.
+// Saves game data to file pointed to by path.
 void SaveGame(gameArgs_t* args, char* path) {
     int out,i;
     int numberOfItems = 3*args->roomCount/2;
@@ -251,24 +235,22 @@ void SaveGame(gameArgs_t* args, char* path) {
     }
 }
 
-// Odczytuje znaki z pliku i interpretuje je jako liczbę jednocyfrową, dwucyfrową bądź -1 (innych nie będzie)
 // Reads numbers from char array pointed to by buf at bufPosition.
-int ReadValue(int* bufPosition, char* buf) { // Odczytanie liczby z pliku.
+int ReadValue(int* bufPosition, char* buf) {
     (*bufPosition)++;
     int movesCount;
-    if(buf[(*bufPosition)+1] != ' ') { // Jeśli liczba jest dwucyfrowa lub ujemna. If a number is 2-digit or -1
+    if(buf[(*bufPosition)+1] != ' ') { // If a number is 2-digit or -1
         if(buf[*bufPosition] == '-') movesCount = -1;
         else movesCount = 10*buf[*bufPosition]+buf[(*bufPosition)+1];
         (*bufPosition)+=2;
     }
-    else {
+    else { // If a number is 1-digit
         movesCount = buf[*bufPosition];
         (*bufPosition)++;
     }
     return movesCount;
 }
 
-// Ładuje stan gry z pliu o ścieżce path do zmiennej args.
 // Loads game data from file pointed to by path.
 void LoadGame(gameArgs_t* args, char* path) {
     int in,i,j;
@@ -315,7 +297,6 @@ void LoadGame(gameArgs_t* args, char* path) {
     for(i=0;i<args->roomCount;i++) args->itemsInRoom[i] = ReadValue(&bufPosition,buf);
 }
 
-// Funkcja realizowana przez wątki szukające najkrótszej ścieżki między pomieszczeniami.
 // Function passed to threads executing FindPath.
 void* FindingPath(void* pVoid) {
     findPathArgs_t* findArgs = pVoid;
@@ -348,7 +329,6 @@ void* FindingPath(void* pVoid) {
     return returnArgs;
 }
 
-// Szuka najkrótszej ścieżki do pomieszczenia o numerze x metodą "brute force" z użyciem k wątków (nieoptymalnie, ale takie było polecenie)
 // Tries to find shortest path to room x using k threads (this solution is far from optimal, but it was required to do it that way)
 findPathReturnArgs_t* FindPath(gameArgs_t* args, int k, int x) {
     pthread_t* pthreads = (pthread_t*)malloc(sizeof(pthread_t)*k);
@@ -377,7 +357,6 @@ findPathReturnArgs_t* FindPath(gameArgs_t* args, int k, int x) {
     return returnArgs1;
 }
 
-// Zwalnia pamięć dynamicznie zaalokowaną przy tworzeniu składowych zmiennej args.
 // Frees dynamically allocated memory.
 void FreeMemory(gameArgs_t *args) {
     int i;
@@ -390,7 +369,6 @@ void FreeMemory(gameArgs_t *args) {
     pthread_mutex_unlock(args->mutex);
 }
 
-// Główna funkcja realizowana w trybie gry.
 // Main game function.
 void Play(gameArgs_t* args) {
     char text[MAX_PATH] = "", *cmd, *arg1, *arg2;
@@ -399,22 +377,22 @@ void Play(gameArgs_t* args) {
     while(1) {
         fgets(text,MAX_PATH,stdin);
         cmd = strtok(text," ");
-        if(cmd[strlen(cmd)-1] == '\n') cmd[strlen(cmd)-1] = '\0'; // obsługa znaku \n zostawianego przez fgets
+        if(cmd[strlen(cmd)-1] == '\n') cmd[strlen(cmd)-1] = '\0'; // fgets leaves \n, we need to deal with it
         arg1 = strtok(NULL," ");
         if(arg1 && arg1[strlen(arg1)-1] == '\n') arg1[strlen(arg1)-1] = '\0';
         arg2 = strtok(NULL, " ");
         if(arg2 && arg2[strlen(arg2)-1] == '\n') arg2[strlen(arg2)-1] = '\0';
         pthread_mutex_lock(args->mutex);
-        if(strcmp(cmd,"quit") == 0) { // obsługa quit
+        if(strcmp(cmd,"quit") == 0) { // quit
             FreeMemory(args);
             return;
         }
-        if(strcmp(cmd,"move-to") == 0 && arg1) { // obsługa move-to
+        if(strcmp(cmd,"move-to") == 0 && arg1) { // move-to
             int tmp = atoi(arg1);
             if(args->graph[args->currentRoom][tmp]) args->currentRoom = tmp;
             else printf("Bad room number\n");
         }
-        else if(strcmp(cmd,"pick-up") == 0 && arg1) { // obsługa pick-up
+        else if(strcmp(cmd,"pick-up") == 0 && arg1) { // pick-up
             int tmp = atoi(arg1);
             if(args->itemHeld == -1 && args->items[tmp] == args->currentRoom) {
                 args->itemHeld = tmp;
@@ -422,7 +400,7 @@ void Play(gameArgs_t* args) {
                 args->itemsInRoom[args->currentRoom]--;
             }
         }
-        else if(strcmp(cmd,"drop") == 0 && arg1) { // obsługa drop
+        else if(strcmp(cmd,"drop") == 0 && arg1) { // drop
             int tmp = atoi(arg1);
             if(tmp == args->itemHeld && args->itemHeld != -1 && args->itemsInRoom[args->currentRoom] <= 1) {
                 args->items[tmp] = args->currentRoom;
@@ -437,11 +415,11 @@ void Play(gameArgs_t* args) {
                 }
             }
         }
-        else if(strcmp(cmd,"save") == 0 && arg1) { // obsługa save
+        else if(strcmp(cmd,"save") == 0 && arg1) { // save
             SaveGame(args,arg1);
             args->saveCount++;
         }
-        else if(strcmp(cmd,"find-path") == 0 && arg1 && arg2) { // obsługa find-path
+        else if(strcmp(cmd,"find-path") == 0 && arg1 && arg2) { // find-path
             int k = atoi(arg1);
             int x = atoi(arg2);
             int i;
@@ -453,14 +431,13 @@ void Play(gameArgs_t* args) {
             free(returnArgs);
             printf("\n");
         }
-        args->movesCount++; // każda komenda, nawet niepoprawna, jest liczona do wyniku (takie utrudnienie :) )
+        args->movesCount++; // every command adds to the score, even if it's invalid
         pthread_mutex_unlock(args->mutex);
         PrintAvailableRooms(args);
         PrintItemsInRoom(args);
     }
 }
 
-// Zawiesza działanie wątku na określoną liczbę milisekund.
 // Suspends thread for a given time in milliseconds.
 void msleep(unsigned int milisec) {
     time_t sec= (int)(milisec/1000);
@@ -471,7 +448,6 @@ void msleep(unsigned int milisec) {
     if(nanosleep(&req,&req)) ERR("nanosleep");
 }
 
-// Funkcja realizowana przez wątek autozapisu, wykonuje autozapis jeśli od ostatniego zapisu minęło >= 60 s.
 // Function passed to autosave thread, saves game data after a minute passed from last save.
 void* autosaveWork(void* args) {
     gameArgs_t* args1 = args;
@@ -495,17 +471,15 @@ void* autosaveWork(void* args) {
     }
 }
 
-// Funkcja będąca argumentem nftw wywoływanego z funkcji MapFromDirTree.
 // Argument of nftw called from MapFromDirTree.
 int walk(const char *name, const struct stat *s, int type, struct FTW *f) {
     if(type == FTW_D) {
-        nftwArgs.level[nftwArgs.len] = f->level; // f->level to aktualny poziom zagłębienia
+        nftwArgs.level[nftwArgs.len] = f->level;
         nftwArgs.len++;
     }
     return 0;
 }
 
-// Funkcja odwzorująca drzewo katalogów opisywane przez parametr NnftwArgs jako mapę gry
 // Creates map from directory tree represented by NnftwArgs.
 bool** MapFromDirTree(nftwArgs_t* NnftwArgs) {
     int i,j;
@@ -530,7 +504,6 @@ bool** MapFromDirTree(nftwArgs_t* NnftwArgs) {
     return graph;
 }
 
-// Nasłuchuje na sygnał SIGUSR1 i zamienia miejscami 2 losowe elementy po jego otrzymaniu.
 // Function passed to thread waiting for SIGUSR1, after receiving SIGUSR1 swaps rooms between two items.
 void* signalHandling(void* pVoid) {
     gameArgs_t* args = pVoid;
@@ -560,7 +533,7 @@ void* signalHandling(void* pVoid) {
 }
 
 // Main menu.
-int main(int argc, char** argv) { // menu główne
+int main(int argc, char** argv) {
     if(argc != 1 && argc != 3) usage();
     char savePath[MAX_PATH] = "";
     char text[MAX_PATH] = "", *cmd, *arg1, *arg2;
@@ -584,7 +557,7 @@ int main(int argc, char** argv) { // menu główne
     while(1) {
         fgets(text,MAX_PATH,stdin);
         cmd = strtok(text," ");
-        if(cmd[strlen(cmd)-1] == '\n') cmd[strlen(cmd)-1] = '\0'; //obsługa znaku \n zostawianego przez fgets. Dealing with \n left by fgets.
+        if(cmd[strlen(cmd)-1] == '\n') cmd[strlen(cmd)-1] = '\0'; // Dealing with \n left by fgets.
         arg1 = strtok(NULL," ");
         if(arg1 && arg1[strlen(arg1)-1] == '\n') arg1[strlen(arg1)-1] = '\0';
         arg2 = strtok(NULL," ");
