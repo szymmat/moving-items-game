@@ -1,5 +1,5 @@
 # moving-items-game
-My biggest project so far, a game focused on moving items to proper rooms under certain conditions. Written in C for Linux as a project for my Operating Systems course.
+A game focused on moving items to proper rooms under certain conditions. Written in C for Linux as a project for my Operating Systems course.
 
 **1 Overview**
 The game takes place on a map, which is an undirected graph of rooms. In each room there are no more than two items. The aim of the game is to move all items to the rooms to which they are assigned, while making as few moves as possible. At the beginning of the game the player is located in a random room and carries no items. The player may take the following actions:
